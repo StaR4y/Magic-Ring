@@ -1,17 +1,12 @@
-//
-//  MagicRingApp.swift
-//  MagicRing
-//
-//  Created by StaRry on 2026/5/19.
-//
-
 import SwiftUI
 
 @main
 struct MagicRingApp: App {
+    @NSApplicationDelegateAdaptor(MagicRingAppDelegate.self) private var appDelegate
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        Settings {
+            EmptyView()
         }
     }
 }
