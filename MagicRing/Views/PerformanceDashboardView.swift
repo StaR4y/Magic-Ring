@@ -4,6 +4,7 @@ struct PerformanceDashboardView: View {
     @ObservedObject private var monitor: PerformanceMonitor
     @ObservedObject private var settings: PanelSettings
     @State private var didAppear = false
+    @State private var isProcessDetailsExpanded = false
 
     init(monitor: PerformanceMonitor, settings: PanelSettings) {
         self.monitor = monitor
@@ -27,15 +28,7 @@ struct PerformanceDashboardView: View {
             dashboardHeader
             separator
 
-            VStack(spacing: 10) {
-                metricStrip
-                innerSeparator
-                cpuActivitySection
-                innerSeparator
-                detailStrip
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            contentSwitcher
 
             separator
             footer
@@ -50,6 +43,83 @@ struct PerformanceDashboardView: View {
         .onAppear {
             didAppear = true
         }
+    }
+
+    private var contentSwitcher: some View {
+        ZStack {
+            if isProcessDetailsExpanded {
+                processDetailsContent
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        )
+                    )
+            } else {
+                overviewContent
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        )
+                    )
+            }
+        }
+        .frame(height: 420)
+        .clipped()
+        .animation(.spring(response: 0.44, dampingFraction: 0.86), value: isProcessDetailsExpanded)
+    }
+
+    private var overviewContent: some View {
+        VStack(spacing: 10) {
+            metricStrip
+            innerSeparator
+            cpuActivitySection
+            innerSeparator
+            detailStrip
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var processDetailsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(localized(chinese: "应用占用情况", english: "App Usage"))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.88))
+
+                    Text(localized(chinese: "按 CPU 与内存占用排序", english: "Sorted by CPU and memory usage"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.46))
+                }
+
+                Spacer(minLength: 0)
+
+                MetricChip(systemImage: "number", text: "\(snapshot?.processes.count ?? 0)")
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                ProcessUsageGroup(
+                    title: localized(chinese: "CPU 占用", english: "CPU Usage"),
+                    rows: processCPURows,
+                    tint: .red,
+                    emptyText: localized(chinese: "等待采样", english: "Sampling")
+                )
+
+                ProcessUsageGroup(
+                    title: localized(chinese: "内存占用", english: "Memory Usage"),
+                    rows: processMemoryRows,
+                    tint: .green,
+                    emptyText: localized(chinese: "暂无数据", english: "No data")
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var dashboardHeader: some View {
@@ -199,37 +269,42 @@ struct PerformanceDashboardView: View {
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(localized(chinese: "详细数据", english: "Details"))
+        Button {
+            withAnimation(.spring(response: 0.44, dampingFraction: 0.86)) {
+                isProcessDetailsExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isProcessDetailsExpanded ? "chevron.down.circle.fill" : "list.bullet.rectangle.fill")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(.white.opacity(0.70))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isProcessDetailsExpanded ? localized(chinese: "收起详情", english: "Hide Details") : localized(chinese: "详细数据", english: "Details"))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+
+                    Text(isProcessDetailsExpanded ? localized(chinese: "返回性能总览", english: "Back to overview") : localized(chinese: "查看应用 CPU / 内存占用", english: "View app CPU / memory usage"))
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.42))
+                }
 
                 Spacer(minLength: 0)
 
-                Text(localized(chinese: "进程 CPU / 内存", english: "Process CPU / Memory"))
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.42))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.36))
+                    .rotationEffect(.degrees(isProcessDetailsExpanded ? 90 : 0))
+                    .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isProcessDetailsExpanded)
             }
-
-            HStack(alignment: .top, spacing: 14) {
-                ProcessUsageGroup(
-                    title: "CPU",
-                    rows: processCPURows,
-                    tint: .red,
-                    emptyText: localized(chinese: "等待采样", english: "Sampling")
-                )
-
-                ProcessUsageGroup(
-                    title: localized(chinese: "内存", english: "MEM"),
-                    rows: processMemoryRows,
-                    tint: .green,
-                    emptyText: localized(chinese: "暂无数据", english: "No data")
-                )
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .frame(height: 80)
     }
@@ -296,12 +371,12 @@ struct PerformanceDashboardView: View {
     }
 
     private var processCPURows: [ProcessUsageRowData] {
-        let processes = (snapshot?.processes ?? [])
-            .filter { $0.cpuUsage > 0.0001 }
+        let sortedProcesses = (snapshot?.processes ?? [])
             .sorted { lhs, rhs in
                 lhs.cpuUsage == rhs.cpuUsage ? lhs.memoryBytes > rhs.memoryBytes : lhs.cpuUsage > rhs.cpuUsage
             }
-            .prefix(2)
+        let activeProcesses = sortedProcesses.filter { $0.cpuUsage > 0.0001 }
+        let processes = (activeProcesses.isEmpty ? sortedProcesses : activeProcesses).prefix(8)
 
         return processes.map { process in
             ProcessUsageRowData(
@@ -319,7 +394,7 @@ struct PerformanceDashboardView: View {
             .sorted { lhs, rhs in
                 lhs.memoryBytes == rhs.memoryBytes ? lhs.cpuUsage > rhs.cpuUsage : lhs.memoryBytes > rhs.memoryBytes
             }
-            .prefix(2)
+            .prefix(8)
 
         return processes.map { process in
             let memoryProgress = totalMemory > 0 ? Double(process.memoryBytes) / totalMemory : 0
