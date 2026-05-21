@@ -3,8 +3,6 @@
 
 完全免费且开源的 macOS 状态栏性能监测控件。用于快速查看 CPU、内存、磁盘、电池、网络和进程占用情况。
 
-<img width="740" height="1140" alt="image" src="https://github.com/user-attachments/assets/6dc8d3b7-1144-440d-8712-0e08d5afb13e" />
-
 
 ## 功能
 
@@ -32,6 +30,8 @@ open MagicRing.xcodeproj
 然后选择 `MagicRing` target 运行即可。
 
 项目当前 macOS Deployment Target 为 `26.4`。
+
+<img width="740" height="1140" alt="image" src="https://github.com/user-attachments/assets/6dc8d3b7-1144-440d-8712-0e08d5afb13e" />
 
 ## 目录结构
 
