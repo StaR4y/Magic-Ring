@@ -1,4 +1,5 @@
-alt="MagicRingIcon" src="https://github.com/user-attachments/assets/35fdd721-4ed9-48f2-bf66-c2d504513fe2" />
+<img width="150" height="150" alt="MagicRingIcon" src="https://github.com/user-attachments/assets/bedf71fd-7bb0-40ea-b448-b77ad7d04d12" />![Uploa<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+
 # MagicRing
 
 完全免费且开源的 macOS 状态栏性能监测控件。用于快速查看 CPU、内存、磁盘、电池、网络和进程占用情况。
