@@ -19,6 +19,7 @@ final class StatusBarController {
     private var isSettingsMenuVisible = false
 
     func start() {
+        configureApplicationIcon()
         configureStatusItem()
         configurePanel()
         startStatusItemHoverPolling()
@@ -54,6 +55,14 @@ final class StatusBarController {
         button.target = self
         button.action = #selector(handleStatusItemClick)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    private func configureApplicationIcon() {
+        guard let icon = Self.applicationIcon() else {
+            return
+        }
+
+        NSApp.applicationIconImage = icon
     }
 
     private func configurePanel() {
@@ -179,11 +188,17 @@ final class StatusBarController {
 
     @objc private func handleAboutMenuItem() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [
+
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "MagicRing",
             .applicationVersion: "1.0",
             .credits: NSAttributedString(string: "A compact macOS status bar performance monitor.")
-        ])
+        ]
+        if let icon = Self.applicationIcon() {
+            options[.applicationIcon] = icon
+        }
+
+        NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
     @objc private func handleCheckUpdatesMenuItem() {
@@ -217,6 +232,18 @@ final class StatusBarController {
         alert.alertStyle = .warning
         alert.addButton(withTitle: localizedMenuTitle(chinese: "好", english: "OK"))
         alert.runModal()
+    }
+
+    private static func applicationIcon() -> NSImage? {
+        if let icon = NSImage(named: "AppIcon") {
+            return icon
+        }
+
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") else {
+            return nil
+        }
+
+        return NSImage(contentsOf: iconURL)
     }
 
     private func startStatusItemHoverPolling() {
