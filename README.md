@@ -32,8 +32,6 @@ open MagicRing.xcodeproj
 
 项目当前 macOS Deployment Target 为 `26.4`。
 
-<img width="740" height="1140" alt="image" src="https://github.com/user-attachments/assets/6dc8d3b7-1144-440d-8712-0e08d5afb13e" />
-
 ## 目录结构
 
 ```text
