@@ -4,19 +4,19 @@ import SwiftUI
 
 @MainActor
 final class StatusBarController {
-    private let monitor = PerformanceMonitor(updateInterval: 0.8, historyLimit: 56)
+    private let monitor = PerformanceMonitor(updateInterval: 0.8, historyLimit: 1200)
     private let settings = PanelSettings()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let panelSize = NSSize(width: 352, height: 272)
-    private let settingsPanelSize = NSSize(width: 390, height: 330)
+    private let panelSize = NSSize(width: 370, height: 570)
+    private let panelCornerRadius: CGFloat = 25
 
     private var panel: NSPanel?
-    private var settingsPanel: NSPanel?
     private var hideWorkItem: DispatchWorkItem?
     private var hoverPollingTask: Task<Void, Never>?
     private var cancellable: AnyCancellable?
     private var isStatusItemHovered = false
     private var isPanelHovered = false
+    private var isSettingsMenuVisible = false
 
     func start() {
         configureStatusItem()
@@ -34,7 +34,6 @@ final class StatusBarController {
         hoverPollingTask?.cancel()
         cancellable = nil
         panel?.orderOut(nil)
-        settingsPanel?.orderOut(nil)
         NSStatusBar.system.removeStatusItem(statusItem)
         monitor.stop()
     }
@@ -50,7 +49,7 @@ final class StatusBarController {
         button.image = image
         button.imagePosition = .imageLeading
         button.font = .systemFont(ofSize: 11, weight: .semibold)
-        button.title = " --%"
+        button.title = " CPU: --%"
         button.toolTip = "MagicRing Performance"
         button.target = self
         button.action = #selector(handleStatusItemClick)
@@ -73,11 +72,11 @@ final class StatusBarController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
 
         let rootView = PerformanceDashboardView(monitor: monitor, settings: settings)
-            .padding(12)
+            .background(Color.clear)
         let hostingView = HoverTrackingHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: panelSize)
-        hostingView.wantsLayer = true
-        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.autoresizingMask = [.width, .height]
+        hostingView.configureTransparentLayer(cornerRadius: panelCornerRadius)
         hostingView.onMouseEntered = { [weak self] in
             self?.isPanelHovered = true
             self?.hideWorkItem?.cancel()
@@ -88,31 +87,12 @@ final class StatusBarController {
         }
 
         panel.contentView = hostingView
+        panel.contentView?.wantsLayer = true
+        panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.contentView?.layer?.isOpaque = false
+        panel.contentView?.layer?.cornerRadius = panelCornerRadius
+        panel.contentView?.layer?.masksToBounds = true
         self.panel = panel
-    }
-
-    private func configureSettingsPanelIfNeeded() -> NSPanel {
-        if let settingsPanel {
-            return settingsPanel
-        }
-
-        let panel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: settingsPanelSize),
-            styleMask: [.titled, .closable, .utilityWindow],
-            backing: .buffered,
-            defer: true
-        )
-
-        panel.title = "MagicRing Settings"
-        panel.isReleasedWhenClosed = false
-        panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = NSHostingView(rootView: SettingsView(settings: settings))
-
-        settingsPanel = panel
-        return panel
     }
 
     private func updateStatusItem(_ snapshot: PerformanceSnapshot?) {
@@ -121,13 +101,13 @@ final class StatusBarController {
         }
 
         let usage = snapshot?.cpuUsage ?? 0
-        button.title = " \(MetricFormatting.percent(usage))"
+        button.title = " CPU: \(MetricFormatting.percent(usage))"
         button.contentTintColor = .labelColor
     }
 
     @objc private func handleStatusItemClick() {
         if NSApp.currentEvent?.type == .rightMouseUp {
-            openSettingsPanel()
+            showSettingsMenu()
         } else {
             togglePanel()
         }
@@ -138,36 +118,81 @@ final class StatusBarController {
             return
         }
 
-        if settingsPanel?.isVisible == true {
-            settingsPanel?.orderOut(nil)
-            isStatusItemHovered = false
-        }
-
         if panel.isVisible {
             hidePanel()
         } else {
-            showPanel(dismissingSettingsPanel: true)
+            showPanel()
         }
     }
 
-    private func openSettingsPanel() {
+    private func showSettingsMenu() {
         hidePanel()
 
-        let panel = configureSettingsPanelIfNeeded()
-        if let button = statusItem.button,
-           let buttonWindow = button.window {
-            let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-            let screenFrame = buttonWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-            let x = min(max(buttonFrame.midX - settingsPanelSize.width / 2, screenFrame.minX + 12), screenFrame.maxX - settingsPanelSize.width - 12)
-            let y = max(buttonFrame.minY - settingsPanelSize.height - 10, screenFrame.minY + 12)
-
-            panel.setFrame(NSRect(x: x, y: y, width: settingsPanelSize.width, height: settingsPanelSize.height), display: true)
-        } else {
-            panel.center()
+        guard let button = statusItem.button else {
+            return
         }
 
+        let menu = makeSettingsMenu()
+        isSettingsMenuVisible = true
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
+        isSettingsMenuVisible = false
+    }
+
+    private func makeSettingsMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        menu.addItem(nativeMenuItem(title: localizedMenuTitle(chinese: "关于 MagicRing", english: "About MagicRing"), action: #selector(handleAboutMenuItem)))
+        menu.addItem(nativeMenuItem(title: localizedMenuTitle(chinese: "检查更新...", english: "Check for Updates..."), action: #selector(handleCheckUpdatesMenuItem)))
+        menu.addItem(.separator())
+
+        let englishItem = nativeMenuItem(title: "English", action: #selector(handleToggleEnglishMenuItem))
+        englishItem.state = settings.isEnglishEnabled ? .on : .off
+        menu.addItem(englishItem)
+
+        menu.addItem(.separator())
+
+        let quitItem = nativeMenuItem(title: localizedMenuTitle(chinese: "退出", english: "Quit"), action: #selector(handleQuitMenuItem))
+        quitItem.keyEquivalent = "q"
+        quitItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(quitItem)
+
+        return menu
+    }
+
+    private func nativeMenuItem(title: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    private func localizedMenuTitle(chinese: String, english: String) -> String {
+        settings.isEnglishEnabled ? english : chinese
+    }
+
+    @objc private func handleAboutMenuItem() {
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "MagicRing",
+            .applicationVersion: "1.0",
+            .credits: NSAttributedString(string: "A compact macOS status bar performance monitor.")
+        ])
+    }
+
+    @objc private func handleCheckUpdatesMenuItem() {
+        guard let url = URL(string: "https://github.com/StaR4y/Magic-Ring/releases") else {
+            return
+        }
+
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func handleToggleEnglishMenuItem() {
+        settings.isEnglishEnabled.toggle()
+    }
+
+    @objc private func handleQuitMenuItem() {
+        NSApp.terminate(nil)
     }
 
     private func startStatusItemHoverPolling() {
@@ -189,7 +214,7 @@ final class StatusBarController {
             .insetBy(dx: -3, dy: -4)
             .contains(NSEvent.mouseLocation)
 
-        if isHovered, isStatusItemHovered, panel?.isVisible != true, settingsPanel?.isVisible != true {
+        if isHovered, isStatusItemHovered, panel?.isVisible != true, !isSettingsMenuVisible {
             showPanel()
             return
         }
@@ -216,15 +241,11 @@ final class StatusBarController {
         return buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
     }
 
-    private func showPanel(dismissingSettingsPanel: Bool = false) {
+    private func showPanel() {
         hideWorkItem?.cancel()
 
-        if settingsPanel?.isVisible == true {
-            guard dismissingSettingsPanel else {
-                return
-            }
-
-            settingsPanel?.orderOut(nil)
+        if isSettingsMenuVisible {
+            return
         }
 
         guard let panel,
@@ -268,6 +289,32 @@ private final class HoverTrackingHostingView<Content: View>: NSHostingView<Conte
 
     override var isOpaque: Bool {
         false
+    }
+
+    required init(rootView: Content) {
+        super.init(rootView: rootView)
+        configureTransparentLayer(cornerRadius: 0)
+    }
+
+    @MainActor @preconcurrency required dynamic init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureTransparentLayer(cornerRadius: 0)
+    }
+
+    func configureTransparentLayer(cornerRadius: CGFloat) {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.isOpaque = false
+        layer?.cornerRadius = cornerRadius
+        layer?.masksToBounds = cornerRadius > 0
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        configureTransparentLayer(cornerRadius: layer?.cornerRadius ?? 0)
+        window?.isOpaque = false
+        window?.backgroundColor = .clear
+        window?.hasShadow = false
     }
 
     override func updateTrackingAreas() {

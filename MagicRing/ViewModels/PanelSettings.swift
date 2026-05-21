@@ -5,14 +5,23 @@ import Foundation
 final class PanelSettings: ObservableObject {
     @Published var style: PanelStyle {
         didSet {
-            UserDefaults.standard.set(style.rawValue, forKey: storageKey)
+            UserDefaults.standard.set(style.rawValue, forKey: styleStorageKey)
         }
     }
 
-    private let storageKey = "panelStyle"
+    @Published var isEnglishEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isEnglishEnabled, forKey: englishStorageKey)
+        }
+    }
+
+    private let styleStorageKey = "panelStyle"
+    private let englishStorageKey = "panelUsesEnglish"
 
     init() {
-        let rawValue = UserDefaults.standard.string(forKey: storageKey)
-        style = rawValue.flatMap(PanelStyle.init(rawValue:)) ?? .clearGlass
+        let styleRawValue = UserDefaults.standard.string(forKey: styleStorageKey)
+
+        style = styleRawValue.flatMap(PanelStyle.init(rawValue:)) ?? .clearGlass
+        isEnglishEnabled = UserDefaults.standard.bool(forKey: englishStorageKey)
     }
 }

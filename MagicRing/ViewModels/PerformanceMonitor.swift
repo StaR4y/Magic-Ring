@@ -38,6 +38,14 @@ final class PerformanceMonitor: ObservableObject {
         recentSnapshots.map(\.diskUsage)
     }
 
+    var networkDownloadHistory: [Double] {
+        recentSnapshots.map(\.network.bytesInPerSecond)
+    }
+
+    var networkUploadHistory: [Double] {
+        recentSnapshots.map(\.network.bytesOutPerSecond)
+    }
+
     var thermalPressureHistory: [Double] {
         recentSnapshots.map { Self.thermalPressureValue(for: $0.thermalPressure) }
     }
