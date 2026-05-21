@@ -1,4 +1,4 @@
-<img width="150" height="150" alt="MagicRingIcon" src="https://github.com/user-attachments/assets/bedf71fd-7bb0-40ea-b448-b77ad7d04d12" />!<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+<img width="150" height="150" alt="MagicRingIcon" src="https://github.com/user-attachments/assets/bedf71fd-7bb0-40ea-b448-b77ad7d04d12" /><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
 
 # MagicRing
 
