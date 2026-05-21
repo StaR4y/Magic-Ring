@@ -150,6 +150,13 @@ final class StatusBarController {
         englishItem.state = settings.isEnglishEnabled ? .on : .off
         menu.addItem(englishItem)
 
+        let launchAtLoginItem = nativeMenuItem(
+            title: localizedMenuTitle(chinese: "开机自动启动（建议）", english: "Launch at Login (Recommended)"),
+            action: #selector(handleToggleLaunchAtLoginMenuItem)
+        )
+        launchAtLoginItem.state = LaunchAtLoginManager.isEnabled ? .on : .off
+        menu.addItem(launchAtLoginItem)
+
         menu.addItem(.separator())
 
         let quitItem = nativeMenuItem(title: localizedMenuTitle(chinese: "退出", english: "Quit"), action: #selector(handleQuitMenuItem))
@@ -191,8 +198,25 @@ final class StatusBarController {
         settings.isEnglishEnabled.toggle()
     }
 
+    @objc private func handleToggleLaunchAtLoginMenuItem() {
+        do {
+            try LaunchAtLoginManager.setEnabled(!LaunchAtLoginManager.isEnabled)
+        } catch {
+            presentLaunchAtLoginError(error)
+        }
+    }
+
     @objc private func handleQuitMenuItem() {
         NSApp.terminate(nil)
+    }
+
+    private func presentLaunchAtLoginError(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = localizedMenuTitle(chinese: "无法更新开机启动设置", english: "Unable to Update Launch at Login")
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: localizedMenuTitle(chinese: "好", english: "OK"))
+        alert.runModal()
     }
 
     private func startStatusItemHoverPolling() {
