@@ -10,13 +10,17 @@ final class StatusBarController {
     private let panelSize = NSSize(width: 370, height: 570)
     private let panelCornerRadius: CGFloat = 25
 
+    private let updateChecker = UpdateChecker()
+
     private var panel: NSPanel?
     private var hideWorkItem: DispatchWorkItem?
     private var hoverPollingTask: Task<Void, Never>?
+    private var updateCheckTask: Task<Void, Never>?
     private var cancellable: AnyCancellable?
     private var isStatusItemHovered = false
     private var isPanelHovered = false
     private var isSettingsMenuVisible = false
+    private var isCheckingForUpdates = false
 
     func start() {
         configureApplicationIcon()
@@ -24,6 +28,8 @@ final class StatusBarController {
         configurePanel()
         startStatusItemHoverPolling()
         monitor.start()
+
+        LaunchAtLoginManager.refresh()
 
         cancellable = monitor.$snapshot.sink { [weak self] snapshot in
             self?.updateStatusItem(snapshot)
@@ -33,6 +39,7 @@ final class StatusBarController {
     func stop() {
         hideWorkItem?.cancel()
         hoverPollingTask?.cancel()
+        updateCheckTask?.cancel()
         cancellable = nil
         panel?.orderOut(nil)
         NSStatusBar.system.removeStatusItem(statusItem)
@@ -141,6 +148,10 @@ final class StatusBarController {
             return
         }
 
+        // Kick off an async refresh so the next menu open reflects any
+        // external changes; we never block menu construction on this.
+        LaunchAtLoginManager.refresh()
+
         let menu = makeSettingsMenu()
         isSettingsMenuVisible = true
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
@@ -189,11 +200,18 @@ final class StatusBarController {
     @objc private func handleAboutMenuItem() {
         NSApp.activate(ignoringOtherApps: true)
 
+        let info = Bundle.main.infoDictionary
+        let marketingVersion = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let buildNumber = info?["CFBundleVersion"] as? String
+
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "MagicRing",
-            .applicationVersion: "1.0",
+            .applicationVersion: marketingVersion,
             .credits: NSAttributedString(string: "A compact macOS status bar performance monitor.")
         ]
+        if let buildNumber, !buildNumber.isEmpty {
+            options[.version] = buildNumber
+        }
         if let icon = Self.applicationIcon() {
             options[.applicationIcon] = icon
         }
@@ -202,11 +220,114 @@ final class StatusBarController {
     }
 
     @objc private func handleCheckUpdatesMenuItem() {
-        guard let url = URL(string: "https://github.com/StaR4y/Magic-Ring/releases") else {
+        performUpdateCheck()
+    }
+
+    private func performUpdateCheck() {
+        guard !isCheckingForUpdates else {
             return
         }
+        isCheckingForUpdates = true
 
-        NSWorkspace.shared.open(url)
+        let checker = updateChecker
+        updateCheckTask = Task { @MainActor [weak self] in
+            defer { self?.isCheckingForUpdates = false }
+
+            do {
+                let result = try await checker.checkForUpdates()
+                guard let self else { return }
+                self.presentUpdateResult(result)
+            } catch {
+                guard let self else { return }
+                self.presentUpdateError(error)
+            }
+        }
+    }
+
+    private func presentUpdateResult(_ result: UpdateCheckResult) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        if let icon = Self.applicationIcon() {
+            alert.icon = icon
+        }
+
+        switch result {
+        case .upToDate(let currentVersion):
+            alert.messageText = localizedMenuTitle(
+                chinese: "已是最新版本",
+                english: "You're up to date"
+            )
+            alert.informativeText = localizedMenuTitle(
+                chinese: "当前版本 \(currentVersion) 已是最新。",
+                english: "MagicRing \(currentVersion) is the latest version available."
+            )
+            alert.addButton(withTitle: localizedMenuTitle(chinese: "好", english: "OK"))
+            _ = runForegroundModal(alert)
+
+        case .updateAvailable(let currentVersion, let latestVersion, let releaseURL, let downloadURL):
+            alert.messageText = localizedMenuTitle(
+                chinese: "发现新版本",
+                english: "A new version is available"
+            )
+            alert.informativeText = localizedMenuTitle(
+                chinese: "最新版本 \(latestVersion) 已发布，当前版本为 \(currentVersion)。",
+                english: "MagicRing \(latestVersion) is available. You're currently on \(currentVersion)."
+            )
+            alert.addButton(withTitle: localizedMenuTitle(chinese: "下载", english: "Download"))
+            alert.addButton(withTitle: localizedMenuTitle(chinese: "查看发布说明", english: "Release Notes"))
+            alert.addButton(withTitle: localizedMenuTitle(chinese: "稍后", english: "Later"))
+
+            switch runForegroundModal(alert) {
+            case .alertFirstButtonReturn:
+                NSWorkspace.shared.open(downloadURL ?? releaseURL)
+            case .alertSecondButtonReturn:
+                NSWorkspace.shared.open(releaseURL)
+            default:
+                break
+            }
+        }
+    }
+
+    private func presentUpdateError(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = localizedMenuTitle(
+            chinese: "无法检查更新",
+            english: "Unable to Check for Updates"
+        )
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: localizedMenuTitle(chinese: "好", english: "OK"))
+        alert.addButton(withTitle: localizedMenuTitle(chinese: "在 GitHub 打开", english: "Open on GitHub"))
+
+        if runForegroundModal(alert) == .alertSecondButtonReturn,
+           let url = URL(string: "https://github.com/\(UpdateChecker.owner)/\(UpdateChecker.repository)/releases") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Presents an `NSAlert` modally from a menu bar (LSUIElement / `.accessory`) app.
+    /// Without temporarily becoming a regular app, the alert window may never
+    /// become key, leaving the modal run loop apparently frozen.
+    @discardableResult
+    private func runForegroundModal(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        let previousPolicy = NSApp.activationPolicy()
+        if previousPolicy != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+
+        let window = alert.window
+        window.level = .modalPanel
+        window.collectionBehavior.insert(.moveToActiveSpace)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+
+        let response = alert.runModal()
+
+        if previousPolicy != .regular {
+            NSApp.setActivationPolicy(previousPolicy)
+        }
+        return response
     }
 
     @objc private func handleToggleEnglishMenuItem() {
@@ -214,10 +335,13 @@ final class StatusBarController {
     }
 
     @objc private func handleToggleLaunchAtLoginMenuItem() {
-        do {
-            try LaunchAtLoginManager.setEnabled(!LaunchAtLoginManager.isEnabled)
-        } catch {
-            presentLaunchAtLoginError(error)
+        let desired = !LaunchAtLoginManager.isEnabled
+        Task { @MainActor [weak self] in
+            do {
+                try await LaunchAtLoginManager.setEnabled(desired)
+            } catch {
+                self?.presentLaunchAtLoginError(error)
+            }
         }
     }
 
@@ -231,7 +355,7 @@ final class StatusBarController {
         alert.informativeText = error.localizedDescription
         alert.alertStyle = .warning
         alert.addButton(withTitle: localizedMenuTitle(chinese: "好", english: "OK"))
-        alert.runModal()
+        runForegroundModal(alert)
     }
 
     private static func applicationIcon() -> NSImage? {
