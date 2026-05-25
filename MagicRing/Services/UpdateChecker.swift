@@ -85,9 +85,7 @@ struct UpdateChecker {
         let current = currentVersion
         let latest = Self.normalizedVersion(from: release.tagName)
         let releaseURL = URL(string: release.htmlURL) ?? URL(string: "https://github.com/\(Self.owner)/\(Self.repository)/releases")!
-        let downloadURL = release.assets
-            .first(where: { $0.name.hasSuffix(".dmg") })
-            .flatMap { URL(string: $0.browserDownloadURL) }
+        let downloadURL = release.preferredPackageAssetURL()
 
         if Self.compareVersions(latest, current) == .orderedDescending {
             return .updateAvailable(
@@ -157,5 +155,15 @@ private struct GitHubRelease: Decodable {
             case name
             case browserDownloadURL = "browser_download_url"
         }
+    }
+
+    func preferredPackageAssetURL() -> URL? {
+        let packageAsset = assets.first { asset in
+            asset.name.localizedCaseInsensitiveCompare("MagicRing.pkg") == .orderedSame
+        } ?? assets.first { asset in
+            asset.name.lowercased().hasSuffix(".pkg")
+        }
+
+        return packageAsset.flatMap { URL(string: $0.browserDownloadURL) }
     }
 }

@@ -29,8 +29,6 @@ final class StatusBarController {
         startStatusItemHoverPolling()
         monitor.start()
 
-        LaunchAtLoginManager.refresh()
-
         cancellable = monitor.$snapshot.sink { [weak self] snapshot in
             self?.updateStatusItem(snapshot)
         }
@@ -142,20 +140,18 @@ final class StatusBarController {
     }
 
     private func showSettingsMenu() {
-        hidePanel()
-
         guard let button = statusItem.button else {
             return
         }
 
-        // Kick off an async refresh so the next menu open reflects any
-        // external changes; we never block menu construction on this.
-        LaunchAtLoginManager.refresh()
+        isSettingsMenuVisible = true
+        hidePanel()
+        defer {
+            isSettingsMenuVisible = false
+        }
 
         let menu = makeSettingsMenu()
-        isSettingsMenuVisible = true
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
-        isSettingsMenuVisible = false
     }
 
     private func makeSettingsMenu() -> NSMenu {
